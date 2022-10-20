@@ -3,6 +3,7 @@ import time
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import urllib.parse
+import os
 import json
 import sys
 
@@ -66,6 +67,7 @@ class Scryfall():
 
     def download_card(self):
         try:
+            pass
 
         except Exception as e:
             print(e)
@@ -75,26 +77,38 @@ class Scryfall():
         for k, v in kwargs.items():
             if k == 'set_code':
                 set_code = v
+                os.makedirs(set_code, exist_ok=True)
         url = '/'.join([self.scryfall_api_url, 'sets', set_code])
         r = self.get(url)
         set_end_point = self.get(r.json()['search_uri']).json()
         cards = set_end_point['data']
-        for card in cards:
-            if 'card_faces' in card:
-                for double_card in card['card_faces']:
-                    png = self.get(double_card['image_uris']['png'])
-                    name = replace_in_string(double_card['name'])
-                    print(f'{name}.png')
-                    with open(f'{name}.png', 'wb') as f:
+        has_more = set_end_point['has_more']
+        next_page = set_end_point['next_page']
+
+        def download_card_images(cards):
+            name = None
+            png = None
+            for card in cards:
+                # Double faced cards
+                if 'card_faces' in card:
+                    for double_card in card['card_faces']:
+                        png = self.get(double_card['image_uris']['png'])
+                        name = replace_in_string(double_card['name']).lower()
+                else:
+                    name = replace_in_string(card['name']).lower()
+                    png = self.get(card['image_uris']['png'])
+                print(f'{name}.png')
+                if not os.path.exists(f'.\\{set_code}\\{name}.png'):
+                    with open(f'.\\{set_code}\\{name}.png', 'wb') as f:
                         f.write(png.content)
                     time.sleep(2)
-            else:
-                name = replace_in_string(card['name'])
-                png = self.get(card['image_uris']['png'])
-                print(f'{name}.png')
-                with open(f'{name}.png', 'wb') as f:
-                    f.write(png.content)
-                time.sleep(2)
+        while has_more:
+            download_card_images(cards)
+            next_page = self.get(next_page).json()
+            has_more = next_page['has_more']
+            cards = next_page['data']
+            next_page = next_page['next_page'] if has_more else None
+
         return r.json()
 
     def run(self):
